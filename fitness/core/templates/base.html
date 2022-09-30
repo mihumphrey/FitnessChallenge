@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+{% load static %}
+{% load bootstrap5 %}
+{% load fontawesome_5 %}    
+
+<html lang="en">
+<head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-B3FCEM82JM"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+
+        gtag('config', 'G-B3FCEM82JM');
+    </script>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    {% bootstrap_css %}
+    {% bootstrap_javascript %}
+    {% bootstrap_messages %}
+    {% fontawesome_5_static %} 
+
+    <link rel="stylesheet" href="{% static 'css/core.css' %}">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous">  </script>
+    {% block head %}{% endblock %}
+    {% block title%} <title>Recipes</title> {% endblock %}
+</head>
+<body>
+
+    {% block container %}
+    {% endblock container %}
+</body>
+
+<style>
+    html,body {
+        height: 100%;
+    }
+</style>
+</html>

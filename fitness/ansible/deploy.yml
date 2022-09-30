@@ -1,0 +1,94 @@
+---
+- hosts: all
+  tasks:    
+    - name: Sync the code and everything else
+      tags:
+        - deploy
+      become: true
+      become_user: recipes
+      synchronize:
+        src: ../../../recipes
+        dest: /home/recipes
+        rsync_opts:
+          - "--exclude=ansible"        
+
+    - name: Fix RECIPES permissions after rsync
+      tags:
+        - deploy
+      file:
+        path: /home/recipes/recipes
+        recurse: true
+        owner: recipes
+        group: recipes
+
+    - name: Copy recipes virtualenv requirements.txt
+      become: true
+      become_user: recipes
+      copy:
+        src: ../requirements.txt
+        dest: /home/recipes/requirements.txt
+
+    - name: Delete any previous virtual env installation
+      file:
+        path: /home/recipes/env
+        state: absent
+
+    - name: Create RECIPES Virtual environment
+      become: true
+      become_user: recipes
+      command:
+        cmd: /usr/bin/python3 -m virtualenv -p /usr/bin/python3 /home/recipes/env
+        creates: /home/recipes/env/bin/python
+
+    - name: Install Requirements into RECIPES Virtual Environment
+      become: true
+      become_user: recipes
+      pip:
+        executable: /home/recipes/env/bin/pip3
+        requirements: /home/recipes/requirements.txt
+
+    - name: Migrate the database
+      become: true
+      become_user: recipes
+      django_manage:
+        command: migrate
+        app_path: /home/recipes/recipes
+        virtualenv: /home/recipes/env
+        settings: "{{ recipessettings }}"
+
+    #### File updates, do these everywhere we sync code #############
+    - name: Update allowed hosts in django settings
+      become: true
+      become_user: recipes
+      tags:
+        - djangosettings
+      blockinfile:
+        path: /home/recipes/recipes/recipes/settings_prod.py
+        marker: "# {mark} ALLOWED_HOSTS"
+        block: |
+          ALLOWED_HOSTS = ['{{ nginx_host_names }}']
+
+    - name: Update csrf hosts in django settings
+      become: true
+      become_user: recipes
+      tags:
+        - djangosettings
+      blockinfile:
+        path: /home/recipes/recipes/recipes/settings_prod.py
+        marker: "# {mark} CSRF_TRUSTED_ORIGINS"
+        block: |
+          CSRF_TRUSTED_ORIGINS = ['{{ csrf_host_name }}']
+
+    - name: Collect static files
+      become: true
+      become_user: recipes
+      django_manage:
+        command: "collectstatic --noinput"
+        app_path: /home/recipes/recipes
+        virtualenv: /home/recipes/env
+        settings: recipes.settings_prod
+
+    - name: Restart supervisor gunicorn
+      supervisorctl:
+        name: gunicorn
+        state: restarted

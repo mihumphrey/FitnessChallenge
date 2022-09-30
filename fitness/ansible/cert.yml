@@ -1,0 +1,141 @@
+---
+- hosts: all
+  tasks:
+
+    - name: Stop Nginx
+      tags:
+        - nginx
+      systemd:
+        name: nginx
+        state: stopped
+
+    - name: Delete ESM sites-enabled symlink
+      tags:
+        - nginx
+      file:
+        path: /etc/nginx/sites-enabled/recipes
+        state: absent
+
+    - name: Ensure default config serving from /var/www/html is activated
+      tags:
+        - nginx
+      file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        owner: root
+        group: root
+        state: link
+
+    - name: Start Nginx
+      tags:
+        - nginx
+      systemd:
+        name: nginx
+        state: started
+
+    # - name: "Create required directories in /etc/letsencrypt"
+    #   file:
+    #     path: "/etc/letsencrypt/{{ item }}"
+    #     state: directory
+    #     owner: root
+    #     group: root
+    #     mode: u=rwx,g=x,o=x
+    #   with_items:
+    #   - account
+    #   - certs
+    #   - csrs
+    #   - keys
+
+    # - name: "Delete /etc/letsencrypt/certs files"
+    #   file:
+    #     path: "{{ letsencrypt_certs_dir }}/{{ item }}"
+    #     state: absent
+    #   with_items:
+    #     - "{{ nginx_host_names }}.crt"
+    #     - "chain_{{ nginx_host_names }}.crt"
+    #     - "fullchain_{{ nginx_host_names }}.crt"
+
+    # - name: "Generate a Let's Encrypt account key"
+    #   shell: "if [ ! -f {{ letsencrypt_account_key }} ]; then openssl genrsa 4096 | sudo tee {{ letsencrypt_account_key }}; fi"
+
+    # - name: "Generate Let's Encrypt private key"
+    #   shell: "openssl genrsa 4096 | sudo tee /etc/letsencrypt/keys/{{ nginx_host_names }}.key"
+
+    # - name: "Generate Let's Encrypt CSR"
+    #   shell: "openssl req -new -sha256 -key /etc/letsencrypt/keys/{{ nginx_host_names }}.key -subj \"/CN={{ nginx_host_names }}\" -reqexts SAN -config <(cat /etc/ssl/openssl.cnf <(printf \"\n[SAN]\nsubjectAltName=DNS:{{ nginx_host_names }}\")) | sudo tee /etc/letsencrypt/csrs/{{ nginx_host_names }}.csr"
+    #   args:
+    #     executable: /bin/bash
+
+    # - name: "Begin Let's Encrypt challenges"
+    #   community.crypto.acme_certificate:
+    #     acme_directory: "{{ acme_directory }}"
+    #     acme_version: "{{ acme_version }}"
+    #     account_key_src: "{{ letsencrypt_account_key }}"
+    #     account_email: "{{ acme_email }}"
+    #     terms_agreed: 1
+    #     challenge: "{{ acme_challenge_type }}"
+    #     csr: "{{ letsencrypt_csrs_dir }}/{{ nginx_host_names }}.csr"
+    #     dest: "{{ letsencrypt_certs_dir }}/{{ nginx_host_names }}.crt"
+    #     fullchain_dest: "{{ letsencrypt_certs_dir }}/fullchain_{{ nginx_host_names }}.crt"
+    #     remaining_days: 91
+    #   register: acme_challenge_your_domain
+
+    # - name: "Create .well-known/acme-challenge directory"
+    #   file:
+    #     path: /var/www/html/.well-known/acme-challenge
+    #     state: directory
+    #     owner: root
+    #     group: root
+    #     mode: u=rwx,g=rx,o=rx
+
+    # - name: Print return information from the previous task
+    #   debug:
+    #     var: acme_challenge_your_domain
+
+    # - name: "Implement http-01 challenge files"
+    #   copy:
+    #     content: "{{ acme_challenge_your_domain['challenge_data'][item]['http-01']['resource_value'] }}"
+    #     dest: "/var/www/html/{{ acme_challenge_your_domain['challenge_data'][item]['http-01']['resource'] }}"
+    #     owner: root
+    #     group: root
+    #     mode: u=rw,g=r,o=r
+    #   with_items:
+    #   - "{{ nginx_host_names }}"
+    #   when: acme_challenge_your_domain is changed
+
+    # - name: "Complete Let's Encrypt challenges"
+    #   community.crypto.acme_certificate:
+    #     acme_directory: "{{ acme_directory }}"
+    #     acme_version: "{{ acme_version }}"
+    #     account_key_src: "{{ letsencrypt_account_key }}"
+    #     account_email: "{{ acme_email }}"
+    #     challenge: "{{ acme_challenge_type }}"
+    #     csr: "{{ letsencrypt_csrs_dir }}/{{ nginx_host_names }}.csr"
+    #     dest: "{{ letsencrypt_certs_dir }}/{{ nginx_host_names }}.crt"
+    #     chain_dest: "{{ letsencrypt_certs_dir }}/chain_{{ nginx_host_names }}.crt"
+    #     fullchain_dest: "{{ letsencrypt_certs_dir }}/fullchain_{{ nginx_host_names }}"
+    #     data: "{{ acme_challenge_your_domain }}"
+
+    - name: Symlink recipes Nginx to sites enabled
+      tags:
+        - nginxpost
+      file:
+        src: /etc/nginx/sites-available/recipes
+        dest: /etc/nginx/sites-enabled/recipes
+        owner: root
+        group: root
+        state: link
+
+    - name: Delete default sites-enabled symlink
+      tags:
+        - nginxpost
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Restart Nginx
+      tags:
+        - nginxpost
+      systemd:
+        name: nginx
+        state: restarted

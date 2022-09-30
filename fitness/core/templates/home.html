@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% load bootstrap5 %}
+{% load fontawesome_5 %}
+
+{% block container %}
+    <form action="" method="post">
+        {% csrf_token %}
+        <div class="row">
+            {% for user, activities in data.items %}
+                <div class="card col-8 offset-2">
+                    <div class="card-title">
+                        {{user|title}}
+                    </div>
+                    <div class="card-body">
+                        <ul style="list-style-type: none; columns: 5">
+                            {% for activity in activities %}
+                                <li>
+                                    <input type="checkbox" 
+                                    name = "complete" 
+                                    id="{{user.id}}_{{activity.id}}" 
+                                    value ="{{user.id}}_{{activity.id}}" 
+                                    {% if activity.completed %} 
+                                        checked 
+                                    {% endif %}/>
+                                    {{ activity.name }}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                        
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        <div class="card col-8 offset-2">
+            <input class="btn btn-primary" type="submit"/>
+        </div>
+    </form>
+    {% endblock %}

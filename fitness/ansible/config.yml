@@ -1,0 +1,197 @@
+
+# TODO: ANSIBLE TO CREATE AND SET PERMS FOR /media (use httpimg as reference)
+---
+- hosts: all
+  tasks:
+    ############### Repository and Package Installation
+    - name: Upgrade
+      apt:
+        name: "*"
+        update_cache: yes
+        state: latest
+
+    - name: Install GPG
+      apt:
+        pkg: gpg
+
+    - name: Install required packages
+      apt:
+        name:
+          - wget
+          - python3-psycopg2
+          - acl
+        state: latest
+
+    - name: Set up Postgres 14 repo
+      shell: |
+        echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+      args:
+        warn: no
+
+    - name: Install Majority of Packages
+      apt:
+        name: ['git', 'postgresql-14', 'nginx', 'libpq-dev', 'postgresql-common', 'python3-pip',
+               'whois', 'supervisor', 'rsync', 'certbot', 'build-essential', 'python3-certbot-nginx']
+        state: present
+
+    - name: Install Virtualenv into our python installation
+      command:
+        cmd: /usr/bin/python3 -m pip install boto3
+
+    ################ Create user and setup recipes
+    - name: Add the 'recipes' user
+      user:
+        name: recipes
+        shell: /bin/bash
+        generate_ssh_key: yes
+        ssh_key_bits: 2048
+        ssh_key_file: .ssh/id_rsa
+        password: $6$jbcHFsRuogDTRWTh$aL6KKu9oNvkerobcxDP0leXPGqqB./HbVSgfkCIsITwz.G2m0nqfVLwQ.yb3PuT3qTXNcQ4mQoAJIFv6O4nUX/
+        
+    - name: Delete any previous virtual env installation
+      file:
+        path: /home/recipes/env
+        state: absent
+
+    - name: Install Virtualenv into our python installation
+      command:
+        cmd: /usr/bin/python3 -m pip install virtualenv
+
+    - name: Create recipes Virtual environment
+      become: true
+      become_user: recipes    
+      command:
+        cmd: /usr/bin/python3 -m virtualenv -p /usr/bin/python3 /home/recipes/env
+        creates: /home/recipes/env/bin/python
+
+#### DUPLICATED IN recipes-deploy, okay for now
+    - name: Sync the code and everything else
+      tags:
+        - deploy
+      become: true
+      become_user: recipes
+      synchronize:
+        src: ../../../recipes
+        dest: /home/recipes
+        rsync_opts:
+          - "--exclude=ansible"
+
+    - name: Fix recipes permissions after rsync
+      file:
+        path: /home/recipes/recipes
+        recurse: true
+        owner: recipes
+        group: recipes
+
+    - name: Copy recipes virtualenv requirements.txt
+      become: true
+      become_user: recipes
+      copy:
+        src: ../requirements.txt
+        dest: /home/recipes/requirements.txt
+
+    - name: Install Requirements into recipes Virtual Environment
+      become: true
+      become_user: recipes    
+      pip:
+        executable: /home/recipes/env/bin/pip3
+        requirements: /home/recipes/requirements.txt
+
+    - name: Install Gunicorn
+      pip:
+        name: gunicorn
+        virtualenv: /home/recipes/env
+
+    - name: Copy Gunicorn supervisor configuration
+      tags:
+        - supervisor
+      copy:
+        src: etc/supervisor/conf.d/recipes.conf
+        dest: /etc/supervisor/conf.d/recipes.conf
+
+    - name: Copy Nginx configuration
+      tags:
+        - nginx
+        - nginxconfig
+      template:
+        src: etc/nginx/sites-available/recipes
+        dest: /etc/nginx/sites-available/recipes
+
+    - name: Symlink recipes Nginx to sites enabled
+      tags:
+        - nginx
+      file:
+        src: /etc/nginx/sites-available/recipes
+        dest: /etc/nginx/sites-enabled/recipes
+        owner: root
+        group: root
+        state: link
+
+    - name: Prep Django logging directory
+      file:
+        state: directory
+        path: /home/recipes/log
+        owner: recipes
+        group: recipes
+        mode: '0700'
+
+    - name: Create media storage directory
+      file:
+        state: directory
+        path: /home/recipes/recipes/media
+        owner: recipes
+        group: recipes
+        mode: '0775'    
+    - name: Create media storage directory
+      file:
+        state: directory
+        path: /home/recipes/recipes/media
+        owner: recipes
+        group: recipes
+        mode: 'g+s'
+
+    - name: Fix recipes permissions after rsync
+      tags:
+        - deploy
+      file:
+        path: /home/recipes/recipes
+        recurse: true
+        owner: recipes
+        group: recipes
+
+    - name: Update allowed hosts in django settings
+      become: true
+      become_user: recipes
+      tags:
+        - djangosettings
+      blockinfile:
+        path: /home/recipes/recipes/recipes/settings_prod.py
+        marker: "# {mark} ALLOWED_HOSTS"
+        block: |
+          ALLOWED_HOSTS = ['{{ nginx_host_names }}']
+
+    - name: Update csrf hosts in django settings
+      become: true
+      become_user: recipes
+      tags:
+        - djangosettings
+      blockinfile:
+        path: /home/recipes/recipes/recipes/settings_prod.py
+        marker: "# {mark} CSRF_TRUSTED_ORIGINS"
+        block: |
+          CSRF_TRUSTED_ORIGINS = ['{{ csrf_host_name }}']
+
+    - name: Collect static files
+      become: true
+      become_user: recipes
+      django_manage:
+        command: "collectstatic --noinput"
+        app_path: /home/recipes/recipes
+        virtualenv: /home/recipes/env
+        settings: recipes.settings_prod
+
+    - name: Restart supervisor gunicorn
+      supervisorctl:
+        name: gunicorn
+        state: restarted
